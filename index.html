@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>ドパ学 V92 UI MADNESS</title>
+<title>ドパ学</title>
 <style>
 :root{
   --safe-t:env(safe-area-inset-top,0px);--safe-b:env(safe-area-inset-bottom,0px);
@@ -2564,7 +2564,7 @@ const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)],app
 const clamp=(a,b,v)=>Math.max(a,Math.min(b,v)),norm=(n,l)=>(n%l+l)%l,esc=s=>String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
 const textHtml=s=>esc(s||"").replace(/\n/g,"<br>");
 function sceneLevel(level){return clamp(0,20,Number(level)||0)}
-const state={answered:new Map(),total:0,correct:0,liked:new Set(),saved:new Set(),mastered:new Set(),subjectStats:{},dopa:0,bestStreak:0,feedPositions:{home:0},feedFrontiers:{home:0},feedSeed:FEED_SEED,likeWaveTriggered:new Set(),notifications:[],unread:0,metrics:{},commentLog:{},moving:false,interactionLock:false,currentTab:"home",feedTab:'recommended',eventSeq:0,effectLock:false,runSeed:1,mutation:0,overdrive:0,saturationStep:0,bestSaturation:0,completions:0,cleared:false,lastWrongQuestion:null,recoveredQuestion:null,sessionCorrect:0,runStreakIds:[],runAttempted:new Map(),reviewWrong:new Set(),wrongCounts:{}};
+const state={answered:new Map(),total:0,correct:0,liked:new Set(),saved:new Set(),mastered:new Set(),subjectStats:{},dopa:0,bestStreak:0,feedPositions:{home:0},feedFrontiers:{home:0},feedSeed:FEED_SEED,likeWaveTriggered:new Set(),notifications:[],unread:0,metrics:{},commentLog:{},moving:false,interactionLock:false,currentTab:"home",feedTab:'recommended',eventSeq:0,effectLock:false,runSeed:1,mutation:0,overdrive:0,saturationStep:0,bestSaturation:0,completions:0,cleared:false,lastWrongQuestion:null,recoveredQuestion:null,sessionCorrect:0,runStreakIds:[],runAttempted:new Map(),retrySolved:new Set(),pendingWrong:null,reviewWrong:new Set(),wrongCounts:{}};
 
 const STORAGE_KEY="dopagaku-v41-curriculum-progress";
 let audioCtx=null,masterGain=null,masterCompressor=null;
@@ -2572,23 +2572,55 @@ function initAudio(){const C=window.AudioContext||window.webkitAudioContext;if(!
 function tone({freq=440,freq2=null,dur=.08,gain=.025,type="sine",when=0,pan=0}={}){if(!audioCtx)return;const t=audioCtx.currentTime+when,o=audioCtx.createOscillator(),g=audioCtx.createGain(),dest=masterGain||audioCtx.destination;o.type=type;o.frequency.setValueAtTime(freq,t);if(freq2)o.frequency.exponentialRampToValueAtTime(Math.max(1,freq2),t+dur);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(gain,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g);if(audioCtx.createStereoPanner){const p=audioCtx.createStereoPanner();p.pan.setValueAtTime(Math.max(-1,Math.min(1,pan)),t);g.connect(p).connect(dest)}else g.connect(dest);o.start(t);o.stop(t+dur+.03)}
 function playStartSound(){if(!audioCtx&&!(window.AudioContext||window.webkitAudioContext))return;initAudio();if(audioCtx?.state==='suspended')audioCtx.resume();tone({freq:180,freq2:150,dur:.055,gain:.014,type:'triangle'});tone({freq:320,freq2:380,dur:.075,gain:.012,type:'sine',when:.055});noiseBurst({dur:.055,gain:.004,cut:1500,when:.12});tone({freq:440,dur:.055,gain:.008,type:'sine',when:.22});tone({freq:520,dur:.055,gain:.009,type:'sine',when:.31});tone({freq:620,dur:.06,gain:.01,type:'sine',when:.40});tone({freq:523,dur:.07,gain:.013,type:'triangle',when:.66});tone({freq:659,dur:.08,gain:.014,type:'triangle',when:.72});tone({freq:784,dur:.1,gain:.015,type:'sine',when:.79})}
 function rerollMixedFeed(){FEED_SEED=freshFeedSeed();MIXED=makeFeed(FEED_SEED);state.feedSeed=FEED_SEED;state.feedPositions.home=0;state.feedFrontiers.home=0;view.list=MIXED;view.index=0;view.frontier=0}
-function prepareFreshSession(){rerollMixedFeed();state.likeWaveTriggered.clear();state.dopa=0;state.overdrive=0;state.saturationStep=0;state.cleared=false;state.sessionCorrect=0;state.runStreakIds=[];state.runAttempted.clear();state.lastWrongQuestion=null;state.recoveredQuestion=null;state.moving=false;state.interactionLock=false;state.effectLock=false;app.removeAttribute('data-resetting');app.classList.remove('resultMode');hideSaturationClear();setFeedTab();updateDopa();updateBadges();showHome();queueSave()}
+function prepareFreshSession(){rerollMixedFeed();state.likeWaveTriggered.clear();state.dopa=0;state.overdrive=0;state.saturationStep=0;state.cleared=false;state.sessionCorrect=0;state.runStreakIds=[];state.runAttempted.clear();state.retrySolved.clear();state.pendingWrong=null;state.lastWrongQuestion=null;state.recoveredQuestion=null;state.moving=false;state.interactionLock=false;state.effectLock=false;app.removeAttribute('data-resetting');app.classList.remove('resultMode');hideSaturationClear();setFeedTab();updateDopa();updateBadges();showHome();queueSave()}
 function delay(ms){return new Promise(r=>setTimeout(r,ms))}
 async function launchIntoFeed(){const intro=$('#intro'),btn=$('#startBtn'),status=$('#bootStatusText');if(!intro||btn.disabled||intro.classList.contains('booting'))return;btn.disabled=true;intro.classList.remove('hidden','launchReady','handoff','done');app.classList.remove('launchReveal');playStartSound();try{prepareFreshSession()}catch(err){console.error(err);panel.classList.add('hidden');feed.classList.remove('hidden');view.list=MIXED;view.key='home';view.index=0;view.frontier=0;state.feedFrontiers.home=0;renderDeck()}if(status)status.textContent='9教科からおすすめを準備中';intro.setAttribute('aria-busy','true');intro.classList.add('booting');await delay(220);if(status)status.textContent='おすすめを整列中';await delay(260);if(status)status.textContent='最初の問題を読み込み中';await delay(280);intro.classList.add('launchReady');if(status)status.textContent='おすすめを準備しました';try{navigator.vibrate?.(10)}catch(_){}await delay(170);app.classList.add('launchReveal');intro.classList.add('handoff');await delay(520);intro.classList.add('done');await delay(430);intro.classList.add('hidden');intro.classList.remove('booting','launchReady','handoff','done');intro.removeAttribute('aria-busy');app.classList.remove('launchReveal');btn.disabled=false}
+// Each DOPA level has its own sound shape. Four rhythmic/timbral variants keep repeats alive.
 function playCorrectSound(level,before){
- initAudio();if(audioCtx?.state==='suspended')audioCtx.resume();const a=clamp(0,20,Number(level)||0);
- if(a<=1){tone({freq:587,dur:.08,gain:.019,type:'sine'});return}
- if(a===2){tone({freq:587,dur:.07,gain:.02,type:'sine'});tone({freq:740,dur:.1,gain:.021,type:'sine',when:.065});return}
- tone({freq:523,dur:.075,gain:.025,type:'triangle'});tone({freq:659,dur:.085,gain:.025,type:'triangle',when:.055});tone({freq:784,freq2:988,dur:.13,gain:.027,type:'sine',when:.11});
- if(a>=4)tone({freq:1046,freq2:1320,dur:.08,gain:.012,type:'triangle',when:.18});
- if(a>=6){tone({freq:145+a*2,freq2:88,dur:.21,gain:.017,type:'sine',when:.015});tone({freq:820+a*8,freq2:1180+a*10,dur:.09,gain:.011,type:'square',when:.04})}
- if(a>=9){for(let i=0;i<3;i++)tone({freq:420+i*165+a*5,freq2:620+i*185+a*7,dur:.06,gain:.008,type:i%2?'square':'triangle',when:.18+i*.045})}
- if(a>=12){noiseBurst({dur:.075,gain:.007,cut:2600,when:.05});tone({freq:1050,freq2:1700,dur:.13,gain:.01,type:'sawtooth',when:.14})}
- if(a>=15){tone({freq:92,freq2:52,dur:.34,gain:.02,type:'sawtooth',when:.02});for(let i=0;i<4;i++)tone({freq:900+i*190,freq2:1250+i*210,dur:.055,gain:.007,type:'square',when:.24+i*.035})}
- if(a>=18){noiseBurst({dur:.16,gain:.012,cut:1700,when:.02});tone({freq:1500,freq2:2300,dur:.18,gain:.011,type:'triangle',when:.2})}
- if(a>=20){tone({freq:65,freq2:42,dur:.46,gain:.024,type:'sine'});tone({freq:1900,freq2:2900,dur:.22,gain:.012,type:'sawtooth',when:.24})}
+ initAudio();if(audioCtx?.state==='suspended')audioCtx.resume();if(!audioCtx)return;
+ const l=clamp(1,20,Number(level)||1),questionId=state.runStreakIds[state.runStreakIds.length-1]||0,v=(state.sessionCorrect+state.runSeed+l+questionId)%4;
+ const bend=[.96,1,1.04,1.08][v],swing=v%2?1:-1,tempo=[1,.88,1.12,.96][v];
+ const hit=(f,at=0,d=.09,g=.012,type='triangle',pan=0,end=0)=>tone({freq:f*bend,freq2:end?end*bend:null,when:at*tempo,dur:d,gain:g,type,pan});
+ const beat=(at=0,g=.009)=>{hit(115,at,.14,g,'sine',0,62);noiseBurst({when:at*tempo,dur:.036,gain:g*.45,cut:2700})};
+ const sparkle=(f,at=0,pan=0)=>hit(f,at,.13,.009,'sine',pan,f*1.25);
+ // A compact common confirmation is followed by a different scene at every level.
+ hit(610,.00,.052,.010,'sine',-.12*swing,750);
+ switch(l){
+  case 1: sparkle(880,.075);break;
+  case 2: sparkle(740,.07,-.6*swing);sparkle(990,.18,.6*swing);break;
+  case 3: [560,700,940].forEach((f,i)=>hit(f,.055+i*.073,.07,.009,'triangle',(i-1)*.45));beat(.30,.007);break;
+  case 4: beat(.06,.017);noiseBurst({when:.11,dur:.075,gain:.012,cut:1700});hit(1080,.18,.11,.012,'square',.35,540);break;
+  case 5: [660,880,1320,1760].forEach((f,i)=>sparkle(f,.07+i*.065,(i-1.5)*.28*swing));break;
+  case 6: hit(98,.05,.36,.017,'sawtooth',0,58);[520,780,1040].forEach((f,i)=>hit(f,.15+i*.085,.09,.010,'triangle',i%2?.45:-.45));break;
+  case 7: hit(500,.06,.17,.011,'square',-.8*swing,650);hit(500,.11,.17,.011,'square',.8*swing,650);sparkle(1000,.31);break;
+  case 8: noiseBurst({when:.07,dur:.11,gain:.011,cut:2200});[620,740,880,1120].forEach((f,i)=>hit(f,.18+i*.06,.07,.008,'triangle',(i-1.5)*.2));break;
+  case 9: [420,530,670,850,1080].forEach((f,i)=>hit(f,.06+i*.06,.075,.010,'square',(i-2)*.20));hit(160,.37,.22,.012,'sine',0,90);break;
+  case 10: [0,.12,.24,.36].forEach((at,i)=>beat(.055+at,i===3?.017:.011));sparkle(1318,.49);noiseBurst({when:.48,dur:.16,gain:.010,cut:850});break;
+  case 11: [760,920,1080,1320,1540,1760].forEach((f,i)=>hit(f,.06+i*.055,.085,.0075,i%2?'sine':'triangle',(i%3-1)*.6*swing));break;
+  case 12: [470,700,1050,1570].forEach((f,i)=>hit(f,.08+i*.105,.20,.009,'sine',(i-1.5)*.42*swing,f*1.5));noiseBurst({when:.34,dur:.08,gain:.006,cut:3400});break;
+  case 13: hit(920,.06,.16,.012,'square',-.5*swing,540);hit(560,.25,.16,.012,'square',.5*swing,980);beat(.43,.015);break;
+  case 14: [380,540,730,1040].forEach((f,i)=>hit(f,.06+i*.12,.22,.011,'sine',(i%2?1:-1)*.55*swing,f*(i%2?.8:1.4)));break;
+  case 15: hit(90,.05,.52,.017,'sawtooth',0,55);[640,780,920,1080,1360].forEach((f,i)=>hit(f,.12+i*.068,.065,.010,'square',(i%2?1:-1)*.65*swing));break;
+  case 16: [660,1040,520,1420,780].forEach((f,i)=>hit(f,[.06,.11,.25,.30,.43][i],.055,.010,i%2?'square':'sine',(i%2?1:-1)*.7*swing));noiseBurst({when:.22,dur:.045,gain:.012,cut:3800});break;
+  case 17: [240,320,430,580,760,1040].forEach((f,i)=>hit(f,.06+i*.067,.16,.011,i%2?'sawtooth':'triangle',(i%2?1:-1)*.72*swing,f*1.4));beat(.48,.017);break;
+  case 18: beat(.05,.019);noiseBurst({when:.18,dur:.27,gain:.015,cut:600});[660,880,1100,1320].forEach((f,i)=>hit(f,.23+i*.07,.16,.010,'triangle',(i-1.5)*.30));break;
+  case 19: hit(980,.08,.38,.012,'sine',-.4*swing,110);hit(82,.31,.57,.019,'sawtooth',0,42);noiseBurst({when:.43,dur:.22,gain:.012,cut:500});break;
+  case 20: beat(.06,.020);hit(68,.10,.80,.022,'sawtooth',0,42);[523,659,784,1046,1318,1568].forEach((f,i)=>hit(f,.19+i*.095,.31,.011,i%2?'sine':'triangle',(i%2?1:-1)*.34));noiseBurst({when:.58,dur:.34,gain:.018,cut:700});break;
+ }
+ if(l===1&&state.retrySolved.has(questionId)){hit(440,.17,.11,.008,'triangle',-.35,660);sparkle(990,.29,.35)}
+ if(l>=4&&v===3){hit(1100+l*24,l>=15?.57:.37,.075,.007,'sine',.6*swing,1500+l*20)}
 }
-function playWrongSound(old=0){initAudio();if(audioCtx?.state==='suspended')audioCtx.resume();tone({freq:old?470:260,freq2:150,dur:.12,gain:.032,type:'square'});tone({freq:330,freq2:105,dur:.22,gain:.025,type:'sawtooth',when:.06});tone({freq:180,freq2:62,dur:.32,gain:.022,type:'triangle',when:.12});if(old>0){noiseBurst({dur:.15,gain:.018,cut:1300,when:.03});tone({freq:720,freq2:95,dur:.28,gain:.012,type:'square',when:.02})}}
+function playWrongSound(old=0){
+ initAudio();if(audioCtx?.state==='suspended')audioCtx.resume();if(!audioCtx)return;
+ const l=clamp(0,20,Number(old)||0),v=(state.runSeed+(state.wrongCounts[state.lastWrongQuestion]||0)+(state.lastWrongQuestion||0))%3;
+ if(l===0){tone({freq:360+v*28,freq2:205,dur:.17,gain:.017,type:'triangle'});tone({freq:170,freq2:110,dur:.15,gain:.008,type:'sine',when:.085});return}
+ // The current world's sound collapses along with DOPA.
+ const root=l<5?410:l<10?560:l<15?730:960;
+ tone({freq:root+v*42,freq2:105,dur:.28,gain:.023,type:l>=12?'sawtooth':'square'});
+ noiseBurst({dur:l<5?.08:l<12?.17:.28,gain:l<5?.008:l<12?.013:.019,cut:l>=12?900:2100,when:.06});
+ tone({freq:l>=15?82:145,freq2:46,dur:l>=15?.62:.35,gain:l>=15?.019:.012,type:l>=15?'sawtooth':'sine',when:.13});
+ if(l>=7){for(let i=0;i<Math.min(5,2+Math.floor(l/6));i++)tone({freq:840-i*125,freq2:190,dur:.10,gain:.006,type:'triangle',when:.10+i*.075,pan:i%2?.65:-.65})}
+}
 function playTabSound(tab){initAudio();if(audioCtx?.state==='suspended')audioCtx.resume();const t=String(tab||'home');if(t==='home'){tone({freq:420,freq2:500,dur:.055,gain:.007,type:'sine'});tone({freq:610,dur:.045,gain:.0045,type:'triangle',when:.035});return}if(t==='review'){tone({freq:390,freq2:470,dur:.055,gain:.0065,type:'triangle'});tone({freq:620,freq2:700,dur:.07,gain:.006,type:'sine',when:.045});return}if(t==='saved'){tone({freq:640,freq2:520,dur:.065,gain:.0065,type:'triangle'});tone({freq:360,dur:.055,gain:.0045,type:'sine',when:.045});return}tone({freq:520,dur:.05,gain:.005,type:'sine'})}
 function applyVisualLevel(level,actual=state.dopa){
  const formByDopa=['plain','signal','tint','hot','comic','glass','night','split','magazine','arcade','rave','fanwall','holo','alert','bubble','cyber','distort','takeover','swarm','singularity','collapse'];
@@ -2641,9 +2673,9 @@ function commentClass(c){return `commentLine${c.kind==='echo'?' echoComment':''}
 function commentPreviewHtml(q){const flat=[];for(const c of commentsFor(q)){flat.push({c,reply:false});for(const r of c.replies||[])flat.push({c:r,reply:true})}const level=state.dopa||0,limit=level>=18?8:level>=12?6:4,extra=level>=18?4:level>=12?3:level>=6?2:level>=3?1:0;const base=flat.slice(-Math.max(0,limit-extra));for(let i=0;i<extra;i++){const u=USERS[(q.id*11+level*7+i*5)%USERS.length];base.push({c:{user:u.id,text:v92PraiseText(q,level,410+i),likes:level>=18?80+i*37:level>=12?24+i*11:6+i*4,kind:'normal'},reply:false})}return base.slice(-limit).map(({c,reply})=>{const u=userBy(c.user);return `<div class="${commentClass(c)}${reply?' replyLine':''}"><b>@${u.id}</b><span>${esc(c.text)}</span>${reply?'':`<span class="cLike">♡ ${c.likes||0}</span>`}</div>`}).join("")}
 
 function safeMathFigureHtml(){return ''}
-function createPost(q,role){const s=SUBJECTS[q.subject],m=metrics(q),order=choiceOrder(q);const liked=state.liked.has(q.id),saved=state.saved.has(q.id),previous=state.runAttempted.get(q.id),alreadyAnswered=state.runAttempted.has(q.id)&&view.key!=='review';const maxOpt=Math.max(...q.choices.map(x=>String(x).length)),avgOpt=Math.round(q.choices.reduce((a,x)=>a+String(x).length,0)/Math.max(1,q.choices.length)),figure=safeMathFigureHtml(q),linePressure=(q.q?.length||0)*1.08+(q.passage?.length||0)*.78+maxOpt*1.45+avgOpt*.9+(figure?74:0);const qClass=`${q.passage?' readingQ':''}${figure?' figureQ':''}${q.subject==='英語'?' englishQ':''}${q.subject==='理科'?' scienceQ':''}${q.subject==='音楽'?' musicQ':''}${q.subject==='美術'?' artQ':''}${q.subject==='保健体育'?' healthQ':''}${maxOpt>=28||avgOpt>=22?' longOptions':''}${linePressure>=110?' heavyQ':''}`;return `<article class="post${qClass}" data-id="${q.id}" data-role="${role}" style="--subject:${s.accent};--subjectSoft:${s.soft};--subjectInk:${s.ink}">
+function createPost(q,role){const s=SUBJECTS[q.subject],m=metrics(q),order=choiceOrder(q);const liked=state.liked.has(q.id),saved=state.saved.has(q.id);const maxOpt=Math.max(...q.choices.map(x=>String(x).length)),avgOpt=Math.round(q.choices.reduce((a,x)=>a+String(x).length,0)/Math.max(1,q.choices.length)),figure=safeMathFigureHtml(q),linePressure=(q.q?.length||0)*1.08+(q.passage?.length||0)*.78+maxOpt*1.45+avgOpt*.9+(figure?74:0);const qClass=`${q.passage?' readingQ':''}${figure?' figureQ':''}${q.subject==='英語'?' englishQ':''}${q.subject==='理科'?' scienceQ':''}${q.subject==='音楽'?' musicQ':''}${q.subject==='美術'?' artQ':''}${q.subject==='保健体育'?' healthQ':''}${maxOpt>=28||avgOpt>=22?' longOptions':''}${linePressure>=110?' heavyQ':''}`;return `<article class="post${qClass}" data-id="${q.id}" data-role="${role}" style="--subject:${s.accent};--subjectSoft:${s.soft};--subjectInk:${s.ink}">
 <div class="postHead"><div class="avatar"><span class="avatarRing"></span>${s.icon}</div><div class="author"><div class="userline"><span class="username">@${s.user}</span><span class="verified">✓</span></div><div class="postmeta">${q.subject}・${q.grade||'中学範囲'}・${q.unit||'基礎'}</div></div><span class="more">…</span></div>
-<div class="poll"><div class="pollTop"><div class="tagCluster"><span class="subjectTag">${q.subject}</span>${q.grade&&q.grade!=='中学範囲'?`<span class="gradeTag">${q.grade}</span>`:''}</div><span class="reachTag" data-reach><i class="liveDot"></i><span data-reachtext>おすすめ中</span></span></div>${q.passage?`<div class="stimulus">${textHtml(q.passage)}</div>`:''}${figure}<div class="question">${esc(q.q)}</div><div class="choices">${order.map((c,i)=>`<button class="choice${alreadyAnswered&&c.orig===previous?(previous===q.correct?' correct':' miss'):''}" data-choice="${c.orig}" data-slot="${i}"${alreadyAnswered?' disabled':''}><span class="letter">${"ABCD"[i]}</span><span class="choiceText">${esc(c.text)}</span></button>`).join("")}</div></div>
+<div class="poll"><div class="pollTop"><div class="tagCluster"><span class="subjectTag">${q.subject}</span>${q.grade&&q.grade!=='中学範囲'?`<span class="gradeTag">${q.grade}</span>`:''}</div><span class="reachTag" data-reach><i class="liveDot"></i><span data-reachtext>おすすめ中</span></span></div>${q.passage?`<div class="stimulus">${textHtml(q.passage)}</div>`:''}${figure}<div class="question">${esc(q.q)}</div><div class="choices">${order.map((c,i)=>`<button class="choice" data-choice="${c.orig}" data-slot="${i}"><span class="letter">${"ABCD"[i]}</span><span class="choiceText">${esc(c.text)}</span></button>`).join("")}</div></div>
 <div class="social"><div class="actionRow"><button class="socialBtn like ${liked?'on':''}" data-action="like">${icon('heart')}<span class="actionDelta"></span></button><button class="socialBtn" data-action="share">${icon('share')}<span class="actionDelta"></span></button><button class="socialBtn save ${saved?'on':''}" data-action="save">${icon('save')}<span class="actionDelta"></span></button></div>
 <div class="likeLine"><span class="likerFaces" data-faces></span><span class="likeCount" data-likes>${likeSummary(q,m,liked)}</span></div><div class="caption"><b>@${s.user}</b>${caption(q.subject)}</div><div class="commentPreview" data-comments>${commentPreviewHtml(q)}</div><div class="typingLine" data-typing><span data-typingname></span> が入力中 <span class="typingDots"><i></i><i></i><i></i></span></div><div class="time">${(q.id%21)+1}分前</div></div>
 </article>`}
@@ -2654,7 +2686,7 @@ function bestSubject(){const entries=Object.entries(state.subjectStats).filter((
 function qAt(o){return view.list[norm(view.index+o,view.list.length)]}
 function deckBase(){return -feed.clientHeight}
 function setDeckY(y){deck.style.transform=`translate3d(0,${y}px,0)`}
-function updateLatestButton(ping=false){const show=!feed.classList.contains('hidden')&&view.index<view.frontier;latestBtn.classList.toggle('show',show);if(show&&ping){latestBtn.classList.remove('ping');void latestBtn.offsetWidth;latestBtn.classList.add('ping')}}
+function updateLatestButton(ping=false){const show=!feed.classList.contains('hidden')&&view.index<Math.min(view.frontier,state.pendingWrong?.key===view.key?state.pendingWrong.index:Infinity);latestBtn.classList.toggle('show',show);if(show&&ping){latestBtn.classList.remove('ping');void latestBtn.offsetWidth;latestBtn.classList.add('ping')}}
 function postGeometryBad(post,minChoice=34){
  if(!post)return false;
  const poll=post.querySelector('.poll'),choices=[...post.querySelectorAll('.choice')],question=post.querySelector('.question'),stimulus=post.querySelector('.stimulus'),figure=post.querySelector('.mathFigure');
@@ -2729,20 +2761,20 @@ function fitPostGeometry(post){
  }
 }
 function fitAllPosts(){requestAnimationFrame(()=>{deck.querySelectorAll('.post').forEach(fitPostGeometry);requestAnimationFrame(()=>deck.querySelectorAll('.post').forEach(fitPostGeometry))})}
-function renderDeck(){if(!view.list.length)return;if(view.key!=='review'&&state.runAttempted.has(qAt(0).id)&&view.index<view.list.length-1){view.frontier=Math.max(view.frontier,view.index+1);state.feedFrontiers[view.key]=view.frontier}deck.innerHTML=createPost(qAt(-1),'prev')+createPost(qAt(0),'current')+createPost(qAt(1),'next');deck.querySelectorAll('.post').forEach(bindPost);setDeckY(deckBase());applyLevel();fitAllPosts();updateLatestButton()}
+function renderDeck(){if(!view.list.length)return;deck.innerHTML=createPost(qAt(-1),'prev')+createPost(qAt(0),'current')+createPost(qAt(1),'next');deck.querySelectorAll('.post').forEach(bindPost);setDeckY(deckBase());applyLevel();fitAllPosts();updateLatestButton()}
 function bindPost(post){post.querySelectorAll('.choice').forEach(b=>b.addEventListener('click',()=>answer(post,b)));post.querySelectorAll('[data-action]').forEach(b=>b.addEventListener('click',()=>socialAction(post,b.dataset.action,b)))}
 function remember(){if(view.key){state.feedPositions[view.key]=view.index;state.feedFrontiers[view.key]=Math.max(view.frontier,view.index)}queueSave()}
 function buildFeed(list,key='home',index=null){panel.classList.add('hidden');feed.classList.remove('hidden');view.list=list&&list.length?list:MIXED;view.key=key;const saved=Math.max(0,+state.feedPositions[key]||0);view.index=Math.max(0,index==null?saved:index);view.frontier=Math.max(view.index,+state.feedFrontiers[key]||0);state.feedFrontiers[key]=view.frontier;renderDeck();setNav(key==='review'?'review':'home');setFeedTab();updateLatestButton()}
 function setNav(tab){$$('.navItem').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));state.currentTab=tab}
 function animateDeck(from,to,dur,done){if(state.moving)return;state.moving=true;let fin=false;const end=()=>{if(fin)return;fin=true;deck.style.transition='none';setDeckY(to);deck.removeEventListener('transitionend',on);clearTimeout(fb);done&&done();state.moving=false;updateLatestButton()};const on=e=>{if(e.target===deck&&e.propertyName==='transform')end()};deck.style.transition='none';setDeckY(from);void deck.offsetHeight;deck.addEventListener('transitionend',on);deck.style.transition=`transform ${dur}ms cubic-bezier(.18,.82,.22,1)`;setDeckY(to);const fb=setTimeout(end,dur+90)}
 function moveNext(unlock=true){const h=feed.clientHeight;if(view.index>=view.frontier){view.frontier=view.index+1;state.feedFrontiers[view.key]=view.frontier}const target=Math.min(view.index+1,view.frontier);animateDeck(deckBase(),deckBase()-h,430,()=>{view.index=target;renderDeck();remember();if(unlock)state.interactionLock=false;if(state.dopa===19)setTimeout(()=>setWorldAwait(true),0)})}
-function jumpToLatest(){if(state.moving||state.interactionLock||view.index>=view.frontier)return;const h=feed.clientHeight;animateDeck(deckBase(),deckBase()-h*.52,280,()=>{view.index=view.frontier;renderDeck();const p=deck.querySelector('[data-role="current"]');p?.animate([{opacity:.4,transform:'translateY(12px) scale(.985)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:300,easing:'cubic-bezier(.2,.8,.2,1)'});remember()})}
+function jumpToLatest(){if(state.moving||state.interactionLock||view.index>=view.frontier)return;const h=feed.clientHeight;animateDeck(deckBase(),deckBase()-h*.52,280,()=>{view.index=Math.min(view.frontier,state.pendingWrong?.key===view.key?state.pendingWrong.index:Infinity);renderDeck();const p=deck.querySelector('[data-role="current"]');p?.animate([{opacity:.4,transform:'translateY(12px) scale(.985)'},{opacity:1,transform:'translateY(0) scale(1)'}],{duration:300,easing:'cubic-bezier(.2,.8,.2,1)'});remember()})}
 latestBtn.addEventListener('click',jumpToLatest);
 function edgeNudge(kind){if(kind==='latest')updateLatestButton(true);feed.animate([{transform:'translateY(0)'},{transform:`translateY(${kind==='latest'?-3:3}px)`},{transform:'translateY(0)'}],{duration:190,easing:'ease-out'})}
 let drag={on:false,id:0,y:0,dy:0};
 feed.addEventListener('pointerdown',e=>{if(state.moving||state.interactionLock||e.target.closest('button,a,input,textarea,select'))return;drag={on:true,id:e.pointerId,y:e.clientY,dy:0}});
-feed.addEventListener('pointermove',e=>{if(!drag.on||e.pointerId!==drag.id)return;let dy=e.clientY-drag.y;const tryingNext=dy<0,tryingPrev=dy>0;if((tryingNext&&view.index>=view.frontier)||(tryingPrev&&view.index<=0))dy*=.16;drag.dy=clamp(-feed.clientHeight*.85,feed.clientHeight*.85,dy);if(Math.abs(drag.dy)>8)try{feed.setPointerCapture(e.pointerId)}catch(_){};setDeckY(deckBase()+drag.dy)});
-function endDrag(e){if(!drag.on||e.pointerId!==drag.id)return;drag.on=false;const h=feed.clientHeight;if(Math.abs(drag.dy)<=h*.16){animateDeck(deckBase()+drag.dy,deckBase(),220);return}const dir=drag.dy<0?1:-1;if(dir===1&&view.index>=view.frontier){edgeNudge('latest');animateDeck(deckBase()+drag.dy,deckBase(),240);return}if(dir===-1&&view.index<=0){edgeNudge('oldest');animateDeck(deckBase()+drag.dy,deckBase(),240);return}animateDeck(deckBase()+drag.dy,deckBase()-dir*h,360,()=>{view.index=Math.max(0,view.index+dir);renderDeck();remember();updateLatestButton(dir===-1)})}
+feed.addEventListener('pointermove',e=>{if(!drag.on||e.pointerId!==drag.id)return;let dy=e.clientY-drag.y;const tryingNext=dy<0,tryingPrev=dy>0;if((tryingNext&&(view.index>=view.frontier||state.pendingWrong?.key===view.key&&view.index>=state.pendingWrong.index))||(tryingPrev&&view.index<=0))dy*=.16;drag.dy=clamp(-feed.clientHeight*.85,feed.clientHeight*.85,dy);if(Math.abs(drag.dy)>8)try{feed.setPointerCapture(e.pointerId)}catch(_){};setDeckY(deckBase()+drag.dy)});
+function endDrag(e){if(!drag.on||e.pointerId!==drag.id)return;drag.on=false;const h=feed.clientHeight;if(Math.abs(drag.dy)<=h*.16){animateDeck(deckBase()+drag.dy,deckBase(),220);return}const dir=drag.dy<0?1:-1;if(dir===1&&(view.index>=view.frontier||state.pendingWrong?.key===view.key&&view.index>=state.pendingWrong.index)){edgeNudge('latest');animateDeck(deckBase()+drag.dy,deckBase(),240);return}if(dir===-1&&view.index<=0){edgeNudge('oldest');animateDeck(deckBase()+drag.dy,deckBase(),240);return}animateDeck(deckBase()+drag.dy,deckBase()-dir*h,360,()=>{view.index=Math.max(0,view.index+dir);renderDeck();remember();updateLatestButton(dir===-1)})}
 feed.addEventListener('pointerup',endDrag);feed.addEventListener('pointercancel',endDrag);
 function recordFirst(q,picked){if(state.answered.has(q.id))return;state.answered.set(q.id,picked);state.total++;const ok=picked===q.correct;if(ok)state.correct++;const ss=state.subjectStats[q.subject]||{total:0,correct:0};ss.total++;if(ok)ss.correct++;state.subjectStats[q.subject]=ss;queueSave()}
 function markMiss(btn){btn.classList.add('miss')}
@@ -3242,7 +3274,7 @@ function playSaturationPulse(post,q){
  playRewardAfterglow(post,q,20,jackpot);eventChip(`SATURATION ${pct}%`,850)
 }
 function hideSaturationClear(){const c=$('#satClear');if(c){c.classList.remove('open');c.setAttribute('aria-hidden','true')}}
-function resetRunAfterClear(openProfile=false){rerollMixedFeed();state.likeWaveTriggered.clear();state.dopa=0;state.overdrive=0;state.saturationStep=0;state.cleared=false;state.effectLock=false;state.interactionLock=false;state.sessionCorrect=0;state.runStreakIds=[];state.runAttempted.clear();state.mutation=0;state.runSeed=(state.runSeed%997)+1;app.classList.remove('worldBursting','worldAwait','resultMode');updateDopa();queueSave();showHome()}
+function resetRunAfterClear(openProfile=false){rerollMixedFeed();state.likeWaveTriggered.clear();state.dopa=0;state.overdrive=0;state.saturationStep=0;state.cleared=false;state.effectLock=false;state.interactionLock=false;state.sessionCorrect=0;state.runStreakIds=[];state.runAttempted.clear();state.retrySolved.clear();state.pendingWrong=null;state.mutation=0;state.runSeed=(state.runSeed%997)+1;app.classList.remove('worldBursting','worldAwait','resultMode');updateDopa();queueSave();showHome()}
 function showSaturationClear(q){
  if(state.cleared)return;state.cleared=true;state.completions++;state.bestSaturation=100;state.effectLock=true;state.interactionLock=true;stopLiveSocial();queueSave();
  const c=$('#satClear');$('#clearCorrect').textContent=state.sessionCorrect;$('#clearRuns').textContent=state.completions;c?.classList.add('open');c?.setAttribute('aria-hidden','false');
@@ -3334,7 +3366,41 @@ function collapseToZero(post,btn,old){
   setTimeout(()=>{clearInterval(tick);fx.innerHTML='';app.removeAttribute('data-resetting');state.effectLock=false;state.interactionLock=false;state.mutation=0;state.runSeed=(state.runSeed%997)+1;applyLevel();queueSave()},900)
 }
 function crashToZero(old){const post=deck.querySelector('[data-role="current"]'),btn=post?.querySelector('.choice.miss');if(post&&btn)collapseToZero(post,btn,old)}
-function answer(post,btn){setWorldAwait(false);if(state.moving||state.interactionLock||post.dataset.role!=="current"||post.classList.contains('completed')||btn.classList.contains('miss')||state.cleared)return;const q=QUESTIONS[+post.dataset.id],picked=+btn.dataset.choice,ok=picked===q.correct;if(view.key==='review'){post.classList.add('completed');if(ok){btn.classList.add('correct');state.reviewWrong.delete(q.id);showToast('復習完了')}else{markMiss(btn);state.wrongCounts[q.id]=(state.wrongCounts[q.id]||0)+1;showToast('復習する問題に残しました')}updateBadges();queueSave();setTimeout(showReview,800);return}if(state.runAttempted.has(q.id))return;state.runAttempted.set(q.id,picked);recordFirst(q,picked);if(!ok){state.runStreakIds=[];markMiss(btn);post.classList.add('completed');if(view.index<view.list.length-1){view.frontier=Math.max(view.frontier,view.index+1);state.feedFrontiers[view.key]=view.frontier}const old=state.dopa;collapseToZero(post,btn,old);return}state.interactionLock=true;state.effectLock=false;app.removeAttribute('data-resetting');markCorrect(btn,post);const before=state.dopa;state.dopa=Math.min(20,state.dopa+1);state.overdrive=0;state.saturationStep=0;state.sessionCorrect++;state.runStreakIds.push(q.id);if(state.runStreakIds.length>20)state.runStreakIds=state.runStreakIds.slice(-20);state.mutation=mutationFor(state.dopa,q.id*13+state.sessionCorrect);state.bestStreak=Math.max(state.bestStreak,state.dopa);const morphDur=playCorrectMoment(post,btn,before,state.dopa);state.recoveredQuestion=null;queueSave();if(state.dopa===20){setTimeout(()=>finishRunWithResultPost(q),Math.max(3350,morphDur+1050));return}setTimeout(()=>{if(state.effectLock||state.cleared)return;moveNext(true)},Math.max(820,morphDur+70))}
+function answer(post,btn){
+ setWorldAwait(false);
+ if(state.moving||state.interactionLock||post.dataset.role!=="current"||post.classList.contains('completed')||btn.classList.contains('miss')||state.cleared)return;
+ const q=QUESTIONS[+post.dataset.id],picked=+btn.dataset.choice,ok=picked===q.correct;
+ if(view.key==='review'){
+  post.classList.add('completed');
+  if(ok){btn.classList.add('correct');state.reviewWrong.delete(q.id);showToast('復習完了')}
+  else{markMiss(btn);state.wrongCounts[q.id]=(state.wrongCounts[q.id]||0)+1;showToast('復習する問題に残しました')}
+  updateBadges();queueSave();setTimeout(showReview,800);return
+ }
+ const pending=state.pendingWrong;
+ if(pending&&pending.id!==q.id){showToast('間違えた問題を先に解き直してください');return}
+ if(pending&&pending.id===q.id){pending.key=view.key;pending.index=view.index}
+ if(state.runAttempted.has(q.id)&&!pending){
+  if(ok){btn.classList.add('correct');post.classList.add('completed');if(view.index>=view.frontier){state.interactionLock=true;setTimeout(()=>moveNext(true),420)}}
+  else{markMiss(btn);btn.disabled=true}
+  return
+ }
+ if(!state.runAttempted.has(q.id)){state.runAttempted.set(q.id,picked);recordFirst(q,picked)}
+ if(!ok){
+  state.runStreakIds=[];
+  if(!state.pendingWrong)state.pendingWrong={id:q.id,key:view.key,index:view.index,tried:new Set()};
+  state.pendingWrong.tried.add(picked);
+  markMiss(btn);updateLatestButton();
+  collapseToZero(post,btn,state.dopa);return
+ }
+ if(pending){state.retrySolved.add(q.id);state.pendingWrong=null}
+ state.interactionLock=true;state.effectLock=false;app.removeAttribute('data-resetting');markCorrect(btn,post);
+ const before=state.dopa;state.dopa=Math.min(20,state.dopa+1);state.overdrive=0;state.saturationStep=0;state.sessionCorrect++;
+ state.runStreakIds.push(q.id);if(state.runStreakIds.length>20)state.runStreakIds=state.runStreakIds.slice(-20);
+ state.mutation=mutationFor(state.dopa,q.id*13+state.sessionCorrect);state.bestStreak=Math.max(state.bestStreak,state.dopa);
+ const morphDur=playCorrectMoment(post,btn,before,state.dopa);state.recoveredQuestion=null;queueSave();
+ if(state.dopa===20){setTimeout(()=>finishRunWithResultPost(q),Math.max(3350,morphDur+1050));return}
+ setTimeout(()=>{if(state.effectLock||state.cleared)return;moveNext(true)},Math.max(820,morphDur+70))
+}
 function socialAction(post,action,btn){if(post.dataset.role!=="current"||state.moving)return;const q=QUESTIONS[+post.dataset.id],m=metrics(q);if(action==='like'){if(state.liked.has(q.id)){state.liked.delete(q.id);btn.classList.remove('on');btn.animate([{transform:'scale(1)'},{transform:'scale(.88)'},{transform:'scale(1)'}],{duration:220});delta(btn,'-1');showToast('いいねを取り消しました')}else{state.liked.add(q.id);btn.classList.add('on');btn.animate([{transform:'scale(.72)'},{transform:'scale(1.24)'},{transform:'scale(1)'}],{duration:280});if(state.likeWaveTriggered.has(q.id)){playLikeSound(state.dopa,0,false);delta(btn,'+1')}else{state.likeWaveTriggered.add(q.id);manualLikeCascade(post,q,btn)}}refreshPostSocial(post);queueSave();return}if(action==='save'){if(state.saved.has(q.id)){state.saved.delete(q.id);btn.classList.remove('on');showToast('保存から外しました')}else{state.saved.add(q.id);btn.classList.add('on');showToast('保存しました')}queueSave();return}if(action==='comment'){openComments(q);return}if(action==='share'){m.shares++;delta(btn,'+1');showToast('共有しました');addNotification('あなたがこの投稿を共有しました','share');return}}
 function showToast(t){toast.textContent=t;toast.classList.remove('show');void toast.offsetHeight;toast.classList.add('show')}
 let openCommentQuestion=null,replyTargetId=null;
@@ -3380,7 +3446,7 @@ function playThemeMorph(post,q,from,to,onReveal){
  if(to<=2)return v94LowMorph(post,q,to,onReveal);
  if(state.effectLock){onReveal?.();return transitionDuration(to)}
  const dur=transitionDuration(to),pal=V80_PALETTES[to]||['#7450e9','#ff246e'],layer=document.createElement('div');layer.className='v90Morph';layer.style.cssText='position:absolute;inset:0;z-index:340;pointer-events:none;overflow:hidden';fx.appendChild(layer);
- let revealed=false;const reveal=()=>{if(revealed)return;revealed=true;onReveal?.()};const revealAt=Math.round(dur*(to<7?.35:to<12?.39:to<18?.42:.44));setTimeout(reveal,revealAt);playMorphSound(to,state.mutation%3);
+ let revealed=false;const reveal=()=>{if(revealed)return;revealed=true;onReveal?.()};const revealAt=Math.round(dur*(to<7?.35:to<12?.39:to<18?.42:.44));setTimeout(reveal,revealAt);setTimeout(()=>{if(!state.effectLock&&state.dopa===to)playMorphSound(to,state.mutation%3)},135);
  const add=(cls,css='')=>v80Node(layer,cls,`position:absolute;${css}`),rand=(a,b)=>a+Math.random()*(b-a),remove=()=>layer.remove();
  const pill=$('#dopaPill')?.getBoundingClientRect(),ar=app.getBoundingClientRect();const ox=pill?pill.left-ar.left+pill.width/2:ar.width/2,oy=pill?pill.top-ar.top+pill.height/2:ar.height*.12;
  const themeName=THEME_NAMES[to]||`DOPA ${to}`;
